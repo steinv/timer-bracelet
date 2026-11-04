@@ -268,15 +268,10 @@ impl App {
         });
 
         ui.add_space(6.0);
-        let desc = match self.mode {
-            Mode::Program => t
-                .mode_program_desc
-                .replace("{g}", &self.green.to_string())
-                .replace("{b}", &self.blue.to_string())
-                .replace("{r}", &self.red.to_string()),
-            Mode::TurnOff => t.mode_off_desc.to_string(),
-        };
-        ui.label(RichText::new(desc).weak());
+        // The program description sits under "Duration per colour" instead.
+        if self.mode == Mode::TurnOff {
+            ui.label(RichText::new(t.mode_off_desc).weak());
+        }
 
         if before != self.mode {
             self.save_settings();
@@ -287,6 +282,12 @@ impl App {
         let t = self.loc.t;
         let before = (self.green, self.blue, self.red);
         ui.label(RichText::new(t.durations).strong());
+        let desc = t
+            .mode_program_desc
+            .replace("{g}", &self.green.to_string())
+            .replace("{b}", &self.blue.to_string())
+            .replace("{r}", &self.red.to_string());
+        ui.label(RichText::new(desc).weak());
         ui.add_space(4.0);
         ui.add_enabled_ui(!self.running, |ui| {
             egui::Grid::new("durations").num_columns(3).spacing([10.0, 8.0]).show(ui, |ui| {
