@@ -35,7 +35,6 @@ pub struct Texts {
     pub session_count: &'static str,
 
     // active bracelets
-    pub active: &'static str,
     pub last_programmed: &'static str,
 
     // history
@@ -99,7 +98,6 @@ pub const EN: Texts = Texts {
     ok_turned_off: "✔ Bracelet turned off",
     session_count: "This session: {n}",
 
-    active: "Active bracelets",
     last_programmed: "Last programmed",
 
     history: "History",
@@ -161,7 +159,6 @@ pub const NL: Texts = Texts {
     ok_turned_off: "✔ Armband uitgezet",
     session_count: "Deze sessie: {n}",
 
-    active: "Actieve armbanden",
     last_programmed: "Laatst geprogrammeerd",
 
     history: "Geschiedenis",

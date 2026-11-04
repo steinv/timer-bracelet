@@ -403,8 +403,7 @@ impl App {
 
     fn ui_active(&mut self, ui: &mut egui::Ui) {
         let t = self.loc.t;
-        ui.label(RichText::new(t.active).strong());
-        ui.add_space(4.0);
+        let dark = ui.visuals().dark_mode;
         ui.columns(3, |cols| {
             for (i, (label, color, n)) in [
                 (t.green, GREEN, self.online.green),
@@ -414,25 +413,49 @@ impl App {
             .into_iter()
             .enumerate()
             {
-                egui::Frame::group(cols[i].style())
-                    .stroke(Stroke::new(1.5_f32, color))
-                    .inner_margin(8.0)
+                // Tinted tile; dimmed when nothing is in this phase.
+                let active = n > 0;
+                let tint = match (dark, active) {
+                    (true, true) => 0.28,
+                    (true, false) => 0.10,
+                    (false, true) => 0.20,
+                    (false, false) => 0.07,
+                };
+                let fill = color.gamma_multiply(tint);
+                let number_color = if active { color } else { color.gamma_multiply(0.55) };
+                egui::Frame::new()
+                    .fill(fill)
+                    .corner_radius(12.0)
+                    .inner_margin(egui::Margin::symmetric(8, 12))
                     .show(&mut cols[i], |ui| {
                         ui.set_width(ui.available_width());
                         ui.vertical_centered(|ui| {
-                            ui.label(RichText::new(n.to_string()).size(28.0).strong().color(color));
-                            ui.label(label);
+                            ui.label(RichText::new(n.to_string()).size(36.0).strong().color(number_color));
+                            ui.horizontal(|ui| {
+                                // centre "● Label" under the number
+                                let text_w = ui.fonts(|f| {
+                                    f.layout_no_wrap(format!("● {label}"), egui::FontId::proportional(14.0), Color32::WHITE)
+                                        .size()
+                                        .x
+                                });
+                                ui.add_space(((ui.available_width() - text_w) / 2.0).max(0.0));
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                ui.label(RichText::new("●").size(14.0).color(color));
+                                ui.label(RichText::new(label).size(14.0));
+                            });
                         });
                     });
             }
         });
         if let Some(at) = self.last_programmed {
-            ui.add_space(2.0);
-            ui.label(
-                RichText::new(format!("{}: {}", t.last_programmed, at.format(self.loc.datetime_fmt)))
-                    .weak()
-                    .small(),
-            );
+            ui.add_space(4.0);
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    RichText::new(format!("{}: {}", t.last_programmed, at.format(self.loc.datetime_fmt)))
+                        .weak()
+                        .small(),
+                );
+            });
         }
     }
 
@@ -816,6 +839,11 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.add_space(4.0);
+                ui.add_space(4.0);
+                self.ui_active(ui);
+                ui.add_space(14.0);
+                ui.separator();
+                ui.add_space(10.0);
                 self.ui_mode(ui);
                 ui.add_space(12.0);
                 if self.mode == Mode::Program {
@@ -832,8 +860,6 @@ impl eframe::App for App {
                 ui.add_space(16.0);
                 ui.separator();
                 ui.add_space(8.0);
-                self.ui_active(ui);
-                ui.add_space(12.0);
                 self.ui_history(ui);
             });
         });
