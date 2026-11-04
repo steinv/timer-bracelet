@@ -1,0 +1,5 @@
+# Allow normal (logged-in) users to talk to the timer base station without sudo.
+# Install:  sudo cp 99-timer-controller.rules /etc/udev/rules.d/
+#           sudo udevadm control --reload-rules && sudo udevadm trigger
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1911", ATTRS{idProduct}=="d168", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1911", ATTRS{idProduct}=="d168", MODE="0660", TAG+="uaccess"

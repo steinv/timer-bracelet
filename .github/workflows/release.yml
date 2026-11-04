@@ -1,0 +1,97 @@
+name: Release
+
+# Push a tag like v2.0.0 to build Windows / macOS / Linux binaries and publish a GitHub release:
+#   git tag v2.0.0 && git push origin v2.0.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BIN: timer-controller
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+          - name: linux-x64
+            os: ubuntu-22.04      # older glibc = runs on more distros
+          - name: macos-universal
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev libxkbcommon-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libwayland-dev
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build --locked --release
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item target/release/$env:BIN.exe dist/TimerController.exe
+          Copy-Item README.md, LICENSE dist/
+          Compress-Archive -Path dist/* -DestinationPath "TimerController-${{ matrix.name }}.zip"
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cargo build --locked --release
+          mkdir -p dist/TimerController
+          cp target/release/$BIN dist/TimerController/timer-controller
+          cp README.md LICENSE linux/99-timer-controller.rules dist/TimerController/
+          tar -C dist -czf TimerController-${{ matrix.name }}.tar.gz TimerController
+
+      - name: Build (macOS universal .app)
+        if: runner.os == 'macOS'
+        run: |
+          cargo build --locked --release --target aarch64-apple-darwin
+          cargo build --locked --release --target x86_64-apple-darwin
+          APP="dist/Timer Controller.app"
+          mkdir -p "$APP/Contents/MacOS"
+          lipo -create -output "$APP/Contents/MacOS/timer-controller" \
+            target/aarch64-apple-darwin/release/$BIN target/x86_64-apple-darwin/release/$BIN
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          sed "s/__VERSION__/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+          codesign --force --deep --sign - "$APP"   # ad-hoc signature (not notarized)
+          cp README.md LICENSE dist/
+          (cd dist && zip -qry "../TimerController-${{ matrix.name }}.zip" .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: TimerController-${{ matrix.name }}.*
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

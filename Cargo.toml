@@ -1,0 +1,23 @@
+[package]
+name = "timer-controller"
+version = "2.0.0"
+edition = "2021"
+description = "Cross-platform controller for the USB HID traffic-light timer (rewrite of Timer Controller V1.2)"
+
+[[bin]]
+name = "timer-controller"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.31"
+egui_extras = { version = "0.31", features = ["datepicker"] }
+hidapi = "2.6"
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = "0.4"
+sys-locale = "0.3"
+directories = "5"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
