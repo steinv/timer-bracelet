@@ -248,33 +248,49 @@ impl App {
         let t = self.loc.t;
         let before = self.mode;
         ui.add_enabled_ui(!self.running, |ui| {
-            ui.columns(2, |cols| {
-                for (col, mode, label) in [
-                    (0, Mode::Program, t.mode_program),
-                    (1, Mode::TurnOff, t.mode_off),
-                ] {
-                    let selected = self.mode == mode;
-                    let text = RichText::new(label).size(15.0).strong();
-                    let text = if selected { text.color(Color32::WHITE) } else { text };
-                    let fill = match (selected, mode) {
-                        (true, Mode::Program) => GREEN,
-                        (true, Mode::TurnOff) => RED,
-                        _ => cols[col].visuals().widgets.inactive.weak_bg_fill,
-                    };
-                    let btn = egui::Button::new(text)
-                        .fill(fill)
-                        .min_size(Vec2::new(cols[col].available_width(), 40.0));
-                    if cols[col].add(btn).clicked() {
-                        self.mode = mode;
+            // [Program bracelets]  (switch)  [Turn bracelets off]
+            ui.columns(3, |cols| {
+                let label = |ui: &mut egui::Ui, text: &str, mode: Mode, color: Color32, current: Mode| {
+                    let active = current == mode;
+                    let mut rt = RichText::new(text).size(15.0);
+                    rt = if active { rt.strong().color(color) } else { rt.weak() };
+                    ui.add(egui::Label::new(rt).sense(Sense::click()).selectable(false))
+                        .on_hover_cursor(CursorIcon::PointingHand)
+                        .clicked()
+                };
+                // Fixed row height: a centred layout inside the scroll area
+                // would otherwise grow to fill all available height.
+                const ROW: f32 = 36.0;
+                let row = |ui: &egui::Ui| Vec2::new(ui.available_width(), ROW);
+
+                let size = row(&cols[0]);
+                cols[0].allocate_ui_with_layout(size, egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if label(ui, t.mode_program, Mode::Program, GREEN, self.mode) {
+                        self.mode = Mode::Program;
                     }
-                }
+                });
+                let size = row(&cols[1]);
+                cols[1].allocate_ui_with_layout(size, egui::Layout::top_down(egui::Align::Center), |ui| {
+                    ui.add_space(1.0);
+                    if toggle_switch(ui, self.mode == Mode::TurnOff).clicked() {
+                        self.mode = if self.mode == Mode::Program { Mode::TurnOff } else { Mode::Program };
+                    }
+                });
+                let size = row(&cols[2]);
+                cols[2].allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    if label(ui, t.mode_off, Mode::TurnOff, RED, self.mode) {
+                        self.mode = Mode::TurnOff;
+                    }
+                });
             });
         });
 
-        ui.add_space(6.0);
         // The program description sits under "Duration per colour" instead.
         if self.mode == Mode::TurnOff {
-            ui.label(RichText::new(t.mode_off_desc).weak());
+            ui.add_space(8.0);
+            ui.vertical_centered(|ui| {
+                ui.label(RichText::new(t.mode_off_desc).weak());
+            });
         }
 
         if before != self.mode {
@@ -652,6 +668,33 @@ fn minutes_field(ui: &mut egui::Ui, id: &str, value: &mut u16) {
         text = value.to_string();
     }
     ui.data_mut(|d| d.insert_temp(id, text));
+}
+
+/// iOS/Android-style switch. Knob left + green = program, knob right + red =
+/// turn off. The knob slides between the two positions.
+fn toggle_switch(ui: &mut egui::Ui, right: bool) -> egui::Response {
+    let size = Vec2::new(64.0, 34.0);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
+    if ui.is_rect_visible(rect) {
+        let t = ui.ctx().animate_bool(resp.id, right); // 0.0 = left, 1.0 = right
+        let track = lerp_color(GREEN, RED, t);
+        let track = if ui.is_enabled() { track } else { track.gamma_multiply(0.45) };
+        let radius = rect.height() / 2.0;
+        let p = ui.painter();
+        p.rect_filled(rect, radius, track);
+        let knob_r = radius - 3.0;
+        let x = egui::lerp((rect.left() + radius)..=(rect.right() - radius), t);
+        let knob = Pos2::new(x, rect.center().y);
+        p.circle_filled(knob + Vec2::new(0.0, 1.0), knob_r, Color32::from_black_alpha(50)); // shadow
+        p.circle_filled(knob, knob_r, Color32::WHITE);
+    }
+    resp
+}
+
+fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color32::from_rgb(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()))
 }
 
 /// Keep only ASCII digits, at most 3 of them (minutes are 0–999).
