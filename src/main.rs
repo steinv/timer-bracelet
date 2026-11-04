@@ -671,7 +671,8 @@ fn minutes_field(ui: &mut egui::Ui, id: &str, value: &mut u16) {
         egui::TextEdit::singleline(&mut text)
             .id(id)
             .char_limit(3)
-            .horizontal_align(egui::Align::Center),
+            .horizontal_align(egui::Align::Center)
+            .vertical_align(egui::Align::Center),
     );
 
     if resp.changed() {
