@@ -48,6 +48,21 @@ pub fn build_payload(cmd: u8, green: u16, yellow: u16, red: u16) -> Payload {
     p
 }
 
+/// Payload used to switch a bracelet off: a write with 0 minutes for every colour.
+///
+/// The original "Close timer" command (`CMD_CLOSE`, 0xFF) is never acknowledged
+/// by the bracelets (tested on hardware), so the app can't tell whether it
+/// worked. A 0/0/0 write *is* acknowledged, so it is used instead.
+pub fn turn_off_payload() -> Payload {
+    build_payload(CMD_WRITE, 0, 0, 0)
+}
+
+/// True if this (sent) payload switches bracelets off rather than programming them.
+pub fn is_turn_off(p: &Payload) -> bool {
+    let (cmd, g, b, r) = decode(p);
+    cmd == CMD_CLOSE || (g, b, r) == (0, 0, 0)
+}
+
 /// Wrap a payload into a full output report (with report id 0 in front).
 pub fn to_report(payload: &Payload) -> [u8; REPORT_LEN] {
     let mut r = [0u8; REPORT_LEN];

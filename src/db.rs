@@ -19,6 +19,15 @@ pub struct Online {
     pub red: i64,
 }
 
+pub struct HistoryRow {
+    pub start: NaiveDateTime,
+    pub green: i64,
+    pub blue: i64,
+    pub red: i64,
+    /// Set when the bracelet was turned off before its timer ran out.
+    pub ended: Option<NaiveDateTime>,
+}
+
 fn ts(t: NaiveDateTime) -> String {
     t.format(TS).to_string()
 }
@@ -40,6 +49,13 @@ impl Db {
                  value TEXT NOT NULL
              );",
         )?;
+        // v2.1: bracelets turned off early. Add the column to older databases.
+        let has_ended: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('record') WHERE name = 'ended_at'")?
+            .exists([])?;
+        if !has_ended {
+            conn.execute_batch("ALTER TABLE record ADD COLUMN ended_at TEXT")?;
+        }
         Ok(Self { conn })
     }
 
@@ -56,14 +72,28 @@ impl Db {
         Ok(())
     }
 
+    /// A bracelet was turned off at `now`. The dongle doesn't say which one,
+    /// so the oldest bracelet that is still running is marked as ended.
+    /// Returns false if no bracelet was running.
+    pub fn end_one_active(&self, now: NaiveDateTime) -> rusqlite::Result<bool> {
+        let n = self.conn.execute(
+            "UPDATE record SET ended_at = ?1 WHERE id = (
+                 SELECT id FROM record
+                 WHERE ended_at IS NULL AND start_time <= ?1 AND red_time >= ?1
+                 ORDER BY start_time ASC LIMIT 1)",
+            [ts(now)],
+        )?;
+        Ok(n > 0)
+    }
+
     /// Number of timers currently in each phase (same rules as the original).
     pub fn online(&self, now: NaiveDateTime) -> rusqlite::Result<Online> {
         let n = ts(now);
         let q = |sql: &str| self.conn.query_row(sql, [&n], |r| r.get::<_, i64>(0));
         Ok(Online {
-            green: q("SELECT COUNT(*) FROM record WHERE green_time >= ?1")?,
-            blue: q("SELECT COUNT(*) FROM record WHERE green_time < ?1 AND yellow_time >= ?1")?,
-            red: q("SELECT COUNT(*) FROM record WHERE yellow_time < ?1 AND red_time >= ?1
+            green: q("SELECT COUNT(*) FROM record WHERE ended_at IS NULL AND green_time >= ?1")?,
+            blue: q("SELECT COUNT(*) FROM record WHERE ended_at IS NULL AND green_time < ?1 AND yellow_time >= ?1")?,
+            red: q("SELECT COUNT(*) FROM record WHERE ended_at IS NULL AND yellow_time < ?1 AND red_time >= ?1
                     AND date(yellow_time) = date(?1) AND date(red_time) = date(?1)")?,
         })
     }
@@ -74,6 +104,37 @@ impl Db {
             params![ts(from), ts(to)],
             |r| r.get(0),
         )
+    }
+
+    /// Newest first: (start time, green, blue, red minutes).
+    pub fn list_between(
+        &self,
+        from: NaiveDateTime,
+        to: NaiveDateTime,
+        limit: usize,
+    ) -> rusqlite::Result<Vec<HistoryRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT start_time,
+                    CAST(ROUND((julianday(green_time)  - julianday(start_time))  * 1440) AS INTEGER),
+                    CAST(ROUND((julianday(yellow_time) - julianday(green_time))  * 1440) AS INTEGER),
+                    CAST(ROUND((julianday(red_time)    - julianday(yellow_time)) * 1440) AS INTEGER),
+                    ended_at
+             FROM record WHERE start_time BETWEEN ?1 AND ?2
+             ORDER BY start_time DESC LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![ts(from), ts(to), limit as i64], |r| {
+            let start: String = r.get(0)?;
+            Ok(HistoryRow {
+                start: NaiveDateTime::parse_from_str(&start, TS).unwrap_or_default(),
+                green: r.get(1)?,
+                blue: r.get(2)?,
+                red: r.get(3)?,
+                ended: r
+                    .get::<_, Option<String>>(4)?
+                    .and_then(|s| NaiveDateTime::parse_from_str(&s, TS).ok()),
+            })
+        })?;
+        rows.collect()
     }
 
     pub fn delete_between(&self, from: NaiveDateTime, to: NaiveDateTime) -> rusqlite::Result<usize> {
@@ -126,8 +187,31 @@ mod tests {
 
         assert_eq!(db.count_between(at(9, 0), at(11, 0)).unwrap(), 1);
         assert_eq!(db.count_between(at(11, 0), at(12, 0)).unwrap(), 0);
+        let rows = db.list_between(at(9, 0), at(11, 0), 10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].start, rows[0].green, rows[0].blue, rows[0].red), (at(10, 0), 10, 5, 5));
         assert_eq!(db.delete_between(at(9, 0), at(11, 0)).unwrap(), 1);
         assert_eq!(db.count_between(at(0, 0), at(23, 59)).unwrap(), 0);
+    }
+
+    #[test]
+    fn turning_off_removes_one_active_bracelet() {
+        let db = Db::open(Path::new(":memory:")).unwrap();
+        db.insert_record(at(10, 0), 10, 5, 5).unwrap();
+        db.insert_record(at(10, 2), 10, 5, 5).unwrap();
+        assert_eq!(db.online(at(10, 5)).unwrap().green, 2);
+
+        assert!(db.end_one_active(at(10, 5)).unwrap());
+        assert_eq!(db.online(at(10, 5)).unwrap().green, 1);
+        // the oldest one was ended
+        let rows = db.list_between(at(9, 0), at(11, 0), 10).unwrap();
+        assert_eq!(rows[1].start, at(10, 0));
+        assert_eq!(rows[1].ended, Some(at(10, 5)));
+        assert_eq!(rows[0].ended, None);
+
+        assert!(db.end_one_active(at(10, 6)).unwrap());
+        assert!(!db.end_one_active(at(10, 7)).unwrap());
+        assert_eq!(db.count_between(at(9, 0), at(11, 0)).unwrap(), 2);
     }
 
     #[test]

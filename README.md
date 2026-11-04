@@ -34,19 +34,28 @@ Then unplug the dongle and plug it back in.
 ## Usage
 
 1. Plug in the USB dongle. The status bar at the bottom shows **Connected**.
-2. Set the **Green**, **Blue** and **Red** durations in minutes (0–999).
-3. Choose **Write timer** (program bracelets) or **Close timer**.
-4. Press **Start**. The command is broadcast every second until you press **Stop**.
-5. Hold a bracelet near the dongle. When the bracelet accepts the command, the dongle confirms it.
-   The bracelet is then logged and counted under **Online quantities**.
+2. Choose **Program bracelets** or **Turn bracelets off** at the top.
+3. When programming, set the **green / blue / red** minutes (0–999).
+4. Press the round **power button**. The app sends the command every second until you press it
+   again. The settings are locked while it is on.
+5. **Activate each bracelet with the magnet:** hold the magnet against it until the light
+   flickers, then hold the bracelet next to the dongle. When the bracelet confirms,
+   *✔ Bracelet programmed* (or *turned off*) appears and the session counter goes up.
 
-**Sum up / delete** counts the bracelets programmed in a date/time range, or deletes old records.
-Records from today can't be deleted.
+**Active bracelets** shows how many bracelets are green, blue or red right now. This is
+calculated from the history, not read from the bracelets. A bracelet that is turned off no longer
+counts. The dongle doesn't say *which* bracelet was turned off, so the oldest running one is
+marked as ended.
+
+**History** updates live. Pick a preset (Today, Yesterday, Last 7 days, Everything before today)
+or your own period to see how many bracelets were programmed and when. Records from today can't be
+deleted.
 
 ### Troubleshooting
 
-- **Bracelet doesn't respond.** Bracelets go to sleep after being idle for a while. Wake it with the
-  magnet, then hold it near the dongle again. It can take a few seconds before it answers.
+- **Bracelet doesn't respond.** A bracelet only listens right after it is activated with the
+  magnet (its light flickers), even when its light is already on. Activate it, then hold it next to
+  the dongle. It can take a few seconds to answer.
 - **"Not connected".** Check the cable. On Linux, check the udev rule above. The app reconnects
   automatically when the dongle is plugged back in.
 - **Language.** Set `TIMER_LANG=nl` or `TIMER_LANG=en` to override the system language.
@@ -117,6 +126,9 @@ checksum  (0xFF + cmd + the six minute bytes + 0) & 0xFF
 When a bracelet accepts a write command, the dongle sends back the same payload
 (`10 A5 5A …`). The app treats that echo as one programmed bracelet. It is green from that moment
 for G minutes, then blue for B minutes, then red for R minutes.
+
+**Turning bracelets off:** the original *Close timer* command (`cmd FF`) is never acknowledged by
+the bracelets. The app sends a write with 0/0/0 minutes instead, which *is* acknowledged.
 
 ## License
 

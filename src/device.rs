@@ -1,6 +1,7 @@
 //! Background thread that owns the HID device: (re)connects, sends the
 //! current command once per second while running, and reads replies.
 
+use std::collections::VecDeque;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -12,8 +13,14 @@ use crate::protocol::{self, Payload};
 
 pub enum Event {
     Connected(bool),
-    /// The device sent a reply. `sent` is the last payload we transmitted.
-    Reply { sent: Payload, received: Payload },
+    /// The device sent a reply. `matched` is the recently sent payload it
+    /// echoes (a bracelet accepted that command), or `None` if it matches
+    /// nothing we sent recently.
+    Reply {
+        #[allow(dead_code)]
+        received: Payload,
+        matched: Option<Payload>,
+    },
     Error(String),
 }
 
@@ -47,6 +54,8 @@ fn run(outgoing: Outgoing, events: Sender<Event>, wake: impl Fn()) {
     let mut dev: Option<HidDevice> = None;
     let mut last_try: Option<Instant> = None;
     let mut last_sent: Option<Payload> = None;
+    // A bracelet can answer a moment after the command changed, so keep a few.
+    let mut recent: VecDeque<Payload> = VecDeque::new();
     let mut last_write: Option<Instant> = None;
     let mut buf = [0u8; 64];
 
@@ -76,6 +85,10 @@ fn run(outgoing: Outgoing, events: Sender<Event>, wake: impl Fn()) {
                     match d.write(&protocol::to_report(&p)) {
                         Ok(_) => {
                             last_sent = Some(p);
+                            if !recent.contains(&p) {
+                                recent.push_front(p);
+                                recent.truncate(4);
+                            }
                             last_write = Some(Instant::now());
                         }
                         Err(e) => {
@@ -93,10 +106,11 @@ fn run(outgoing: Outgoing, events: Sender<Event>, wake: impl Fn()) {
             match d.read_timeout(&mut buf, 100) {
                 Ok(0) => {}
                 Ok(n) => {
-                    if let (Some(received), Some(sent)) =
-                        (protocol::extract_payload(&buf[..n]), last_sent)
-                    {
-                        emit(Event::Reply { sent, received });
+                    if let Some(received) = protocol::extract_payload(&buf[..n]) {
+                        if !recent.is_empty() {
+                            let matched = recent.iter().copied().find(|p| *p == received);
+                            emit(Event::Reply { received, matched });
+                        }
                     }
                 }
                 Err(_) => lost = true,
