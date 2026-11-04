@@ -541,20 +541,16 @@ impl App {
                         ui.set_width(ui.available_width());
                         egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
                             // Columns: time | green | blue | red | status
-                            const NUM_W: f32 = 104.0;
+                            const NUM_W: f32 = 36.0;
                             let cell = |ui: &mut egui::Ui, text: RichText| {
                                 ui.add_sized(Vec2::new(NUM_W, 18.0), egui::Label::new(text));
                             };
-                            let weak = ui.visuals().weak_text_color();
-                            let font = egui::TextStyle::Body.resolve(ui.style());
-                            egui::Grid::new("history_rows").num_columns(5).striped(true).spacing([12.0, 4.0]).show(ui, |ui| {
+                            egui::Grid::new("history_rows").num_columns(5).striped(true).spacing([8.0, 4.0]).show(ui, |ui| {
                                 ui.label(RichText::new(t.col_time).weak());
                                 for (name, color) in [(t.green, GREEN), (t.blue, BLUE), (t.red, RED)] {
-                                    // "● Green (min)" with a coloured dot, centred over the numbers.
-                                    let mut job = egui::text::LayoutJob::default();
-                                    job.append("● ", 0.0, egui::TextFormat::simple(font.clone(), color));
-                                    job.append(&format!("{name} ({})", t.minutes), 0.0, egui::TextFormat::simple(font.clone(), weak));
-                                    ui.add_sized(Vec2::new(NUM_W, 18.0), egui::Label::new(job));
+                                    // Just a coloured dot; the name shows on hover.
+                                    ui.add_sized(Vec2::new(NUM_W, 18.0), egui::Label::new(RichText::new("●").color(color)))
+                                        .on_hover_text(format!("{name} ({})", t.minutes));
                                 }
                                 ui.label(RichText::new(t.col_status).weak());
                                 ui.end_row();
