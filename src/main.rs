@@ -111,6 +111,8 @@ struct App {
     history: History,
 
     dialog: Option<Dialog>,
+    /// Whether the History section is expanded (remembered between runs).
+    history_open: bool,
 }
 
 impl App {
@@ -132,6 +134,7 @@ impl App {
         let green = setting("green", 1);
         let blue = setting("yellow", 1);
         let red = setting("red", 1);
+        let history_open = db.as_ref().and_then(|d| d.get("history_open")).as_deref() != Some("0");
         let mode = if db.as_ref().and_then(|d| d.get("mode")).as_deref() == Some("close") {
             Mode::TurnOff
         } else {
@@ -164,6 +167,7 @@ impl App {
             to: Range { date: today, hour: 23, minute: 59 },
             history: History::default(),
             dialog,
+            history_open,
         }
     }
 
@@ -305,10 +309,7 @@ impl App {
                         if ui.add_sized(step, egui::Button::new(RichText::new("−").size(16.0))).clicked() {
                             *v = v.saturating_sub(1);
                         }
-                        ui.add_sized(
-                            Vec2::new(56.0, 26.0),
-                            egui::DragValue::new(v).range(0..=999).speed(0.2),
-                        );
+                        minutes_field(ui, label, v);
                         if ui.add_sized(step, egui::Button::new(RichText::new("+").size(16.0))).clicked() {
                             *v = (*v + 1).min(999);
                         }
@@ -440,8 +441,8 @@ impl App {
 
     fn ui_history(&mut self, ui: &mut egui::Ui) {
         let t = self.loc.t;
-        egui::CollapsingHeader::new(RichText::new(t.history).strong())
-            .default_open(true)
+        let resp = egui::CollapsingHeader::new(RichText::new(t.history).strong())
+            .open(Some(self.history_open))
             .show(ui, |ui| {
                 // Quick period presets.
                 let today = Local::now().date_naive();
@@ -544,6 +545,12 @@ impl App {
                     }
                 });
             });
+        if resp.header_response.clicked() {
+            self.history_open = !self.history_open;
+            if let Some(db) = &self.db {
+                let _ = db.set("history_open", if self.history_open { "1" } else { "0" });
+            }
+        }
     }
 
     fn ui_status(&mut self, ui: &mut egui::Ui) {
@@ -611,6 +618,63 @@ impl App {
 }
 
 /// Round power button with the standard power symbol. Pulses while on.
+/// Text field for 0–999 minutes that only accepts digits. Anything else typed
+/// is dropped immediately; an empty field falls back to the last valid value
+/// when it loses focus. Up/Down arrow keys step the value.
+fn minutes_field(ui: &mut egui::Ui, id: &str, value: &mut u16) {
+    let id = ui.id().with(("minutes", id));
+    let mut text: String = ui
+        .data_mut(|d| d.get_temp::<String>(id))
+        .unwrap_or_else(|| value.to_string());
+
+    let resp = ui.add_sized(
+        Vec2::new(56.0, 26.0),
+        egui::TextEdit::singleline(&mut text)
+            .id(id)
+            .char_limit(3)
+            .horizontal_align(egui::Align::Center),
+    );
+
+    if resp.changed() {
+        text = digits_only(&text);
+        if let Ok(v) = text.parse::<u16>() {
+            *value = v.min(999);
+        }
+    }
+    if resp.has_focus() {
+        let (up, down) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown)));
+        if up || down {
+            *value = if up { (*value + 1).min(999) } else { value.saturating_sub(1) };
+            text = value.to_string();
+        }
+    } else {
+        // Not editing: always show the real value (also after −/+ clicks).
+        text = value.to_string();
+    }
+    ui.data_mut(|d| d.insert_temp(id, text));
+}
+
+/// Keep only ASCII digits, at most 3 of them (minutes are 0–999).
+fn digits_only(s: &str) -> String {
+    s.chars().filter(|c| c.is_ascii_digit()).take(3).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::digits_only;
+
+    #[test]
+    fn minutes_input_accepts_only_digits() {
+        assert_eq!(digits_only("ab5x9q"), "59");
+        assert_eq!(digits_only("12"), "12");
+        assert_eq!(digits_only("-3"), "3");
+        assert_eq!(digits_only("1.5"), "15");
+        assert_eq!(digits_only("12345"), "123");
+        assert_eq!(digits_only("٣"), ""); // non-ASCII digits are rejected too
+        assert_eq!(digits_only(""), "");
+    }
+}
+
 /// egui's built-in fonts miss symbols such as ● and ✔ (they render as empty
 /// boxes). DejaVu Sans covers them, so add it as a fallback after the
 /// default fonts. It is embedded, so it works the same on every OS.

@@ -5,6 +5,7 @@
 //!   cargo run --example probe -- close         # send "close" every second for 10 s
 //!   SECS=30 cargo run --example probe -- write 2 2 2
 
+#[allow(dead_code)]
 #[path = "../src/protocol.rs"]
 mod protocol;
 
