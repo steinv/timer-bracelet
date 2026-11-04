@@ -68,6 +68,8 @@ const HISTORY_ROWS: usize = 200;
 struct History {
     key: Option<(NaiveDateTime, NaiveDateTime)>,
     count: i64,
+    /// Records in the range that are not running anymore (may be deleted).
+    deletable: i64,
     rows: Vec<db::HistoryRow>,
 }
 
@@ -473,6 +475,8 @@ impl App {
         }
         if let Some(db) = &self.db {
             self.history.count = db.count_between(key.0, key.1).unwrap_or(0);
+            let now = Local::now().naive_local();
+            self.history.deletable = db.count_deletable(key.0, key.1, now).unwrap_or(0);
             self.history.rows = db.list_between(key.0, key.1, HISTORY_ROWS).unwrap_or_default();
         }
         self.history.key = Some(key);
@@ -578,18 +582,23 @@ impl App {
                     });
                 }
 
-                // Delete, with the reason shown inline when it isn't allowed.
+                // Delete everything except bracelets that are still running.
                 ui.add_space(6.0);
-                let touches_today = from.date() >= today || to.date() >= today;
-                let can_delete = n > 0 && !touches_today;
+                let deletable = self.history.deletable;
+                let running = n - deletable;
                 ui.horizontal_wrapped(|ui| {
-                    let label = if n > 0 { t.delete_n.replace("{n}", &n.to_string()) } else { t.delete.to_string() };
-                    let btn = egui::Button::new(RichText::new(label).color(if can_delete { RED } else { ui.visuals().weak_text_color() }));
-                    if ui.add_enabled(can_delete, btn).clicked() {
-                        self.dialog = Some(Dialog::ConfirmDelete { from, to, n });
+                    let label = if deletable > 0 {
+                        t.delete_n.replace("{n}", &deletable.to_string())
+                    } else {
+                        t.delete.to_string()
+                    };
+                    let can_delete = deletable > 0;
+                    let color = if can_delete { RED } else { ui.visuals().weak_text_color() };
+                    if ui.add_enabled(can_delete, egui::Button::new(RichText::new(label).color(color))).clicked() {
+                        self.dialog = Some(Dialog::ConfirmDelete { from, to, n: deletable });
                     }
-                    if n > 0 && touches_today {
-                        ui.label(RichText::new(t.delete_blocked_today).weak().small());
+                    if running > 0 {
+                        ui.label(RichText::new(t.delete_keeps_running.replace("{n}", &running.to_string())).weak().small());
                     }
                 });
             });
@@ -652,7 +661,7 @@ impl App {
         });
 
         if let Some((from, to)) = delete {
-            self.dialog = Some(Dialog::Info(match self.db.as_ref().map(|d| d.delete_between(from, to)) {
+            self.dialog = Some(Dialog::Info(match self.db.as_ref().map(|d| d.delete_between(from, to, Local::now().naive_local())) {
                 Some(Ok(n)) => t.deleted.replace("{n}", &n.to_string()),
                 Some(Err(e)) => format!("{}: {e}", t.db_error),
                 None => t.db_error.into(),

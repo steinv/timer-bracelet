@@ -48,8 +48,8 @@ counts. The dongle doesn't say *which* bracelet was turned off, so the oldest ru
 marked as ended.
 
 **History** updates live. Pick a preset (Today, Yesterday, Last 7 days, Everything before today)
-or your own period to see how many bracelets were programmed and when. Records from today can't be
-deleted.
+or your own period to see how many bracelets were programmed and when. Deleting removes every
+record in the period except bracelets that are still running, so the active counters stay correct.
 
 ### Troubleshooting
 

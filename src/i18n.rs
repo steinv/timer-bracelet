@@ -53,7 +53,7 @@ pub struct Texts {
     pub ended_at: &'static str,
     pub delete: &'static str,
     pub delete_n: &'static str,
-    pub delete_blocked_today: &'static str,
+    pub delete_keeps_running: &'static str,
 
     // status + dialogs
     pub dongle: &'static str,
@@ -115,7 +115,7 @@ pub const EN: Texts = Texts {
     ended_at: "turned off at {t}",
     delete: "Delete",
     delete_n: "Delete {n} records",
-    delete_blocked_today: "Records from today can't be deleted. Choose a period that ends before today.",
+    delete_keeps_running: "{n} bracelets that are still running are kept.",
 
     dongle: "USB dongle",
     connected: "Connected",
@@ -176,7 +176,7 @@ pub const NL: Texts = Texts {
     ended_at: "uitgezet om {t}",
     delete: "Verwijderen",
     delete_n: "{n} records verwijderen",
-    delete_blocked_today: "Records van vandaag kunnen niet verwijderd worden. Kies een periode die vóór vandaag eindigt.",
+    delete_keeps_running: "{n} armbanden die nog actief zijn blijven staan.",
 
     dongle: "USB-dongle",
     connected: "Verbonden",

@@ -8,6 +8,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 const TS: &str = "%Y-%m-%d %H:%M:%S";
 
+/// SQL condition (with `?3` = now): the bracelet is no longer running.
+const NOT_ACTIVE: &str = "NOT (ended_at IS NULL AND red_time >= ?3)";
+
 pub struct Db {
     conn: Connection,
 }
@@ -137,10 +140,22 @@ impl Db {
         rows.collect()
     }
 
-    pub fn delete_between(&self, from: NaiveDateTime, to: NaiveDateTime) -> rusqlite::Result<usize> {
+    /// Records in the range that may be deleted at `now`: everything except
+    /// bracelets that are still running (not turned off, red phase not over).
+    /// Deleting a running one would make it vanish from the active counters.
+    pub fn count_deletable(&self, from: NaiveDateTime, to: NaiveDateTime, now: NaiveDateTime) -> rusqlite::Result<i64> {
+        self.conn.query_row(
+            &format!("SELECT COUNT(*) FROM record WHERE start_time BETWEEN ?1 AND ?2 AND {NOT_ACTIVE}"),
+            params![ts(from), ts(to), ts(now)],
+            |r| r.get(0),
+        )
+    }
+
+    /// Delete the records in the range, except bracelets still running at `now`.
+    pub fn delete_between(&self, from: NaiveDateTime, to: NaiveDateTime, now: NaiveDateTime) -> rusqlite::Result<usize> {
         self.conn.execute(
-            "DELETE FROM record WHERE start_time BETWEEN ?1 AND ?2",
-            params![ts(from), ts(to)],
+            &format!("DELETE FROM record WHERE start_time BETWEEN ?1 AND ?2 AND {NOT_ACTIVE}"),
+            params![ts(from), ts(to), ts(now)],
         )
     }
 
@@ -190,7 +205,7 @@ mod tests {
         let rows = db.list_between(at(9, 0), at(11, 0), 10).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!((rows[0].start, rows[0].green, rows[0].blue, rows[0].red), (at(10, 0), 10, 5, 5));
-        assert_eq!(db.delete_between(at(9, 0), at(11, 0)).unwrap(), 1);
+        assert_eq!(db.delete_between(at(9, 0), at(11, 0), at(12, 0)).unwrap(), 1);
         assert_eq!(db.count_between(at(0, 0), at(23, 59)).unwrap(), 0);
     }
 
@@ -212,6 +227,27 @@ mod tests {
         assert!(db.end_one_active(at(10, 6)).unwrap());
         assert!(!db.end_one_active(at(10, 7)).unwrap());
         assert_eq!(db.count_between(at(9, 0), at(11, 0)).unwrap(), 2);
+    }
+
+    #[test]
+    fn delete_keeps_running_bracelets() {
+        let db = Db::open(Path::new(":memory:")).unwrap();
+        db.insert_record(at(9, 0), 10, 5, 5).unwrap(); // finished at 09:20
+        db.insert_record(at(10, 0), 10, 5, 5).unwrap(); // turned off below
+        db.insert_record(at(10, 30), 10, 5, 5).unwrap(); // still running at 10:35
+        db.end_one_active(at(10, 10)).unwrap(); // ends the 10:00 one (only one running then)
+
+        let now = at(10, 35);
+        let (from, to) = (at(0, 0), at(23, 59));
+        assert_eq!(db.count_between(from, to).unwrap(), 3);
+        assert_eq!(db.count_deletable(from, to, now).unwrap(), 2);
+        assert_eq!(db.delete_between(from, to, now).unwrap(), 2);
+
+        // only the running bracelet is left, and it still counts as active
+        let rows = db.list_between(from, to, 10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].start, at(10, 30));
+        assert_eq!(db.online(now).unwrap().green, 1);
     }
 
     #[test]
