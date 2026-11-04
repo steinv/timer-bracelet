@@ -1,6 +1,6 @@
 [package]
 name = "timer-controller"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 description = "Cross-platform controller for the USB HID traffic-light timer (rewrite of Timer Controller V1.2)"
 
