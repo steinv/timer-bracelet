@@ -714,9 +714,13 @@ impl eframe::App for App {
                     self.ui_durations(ui);
                     ui.add_space(12.0);
                 }
-                self.ui_magnet_hint(ui);
-                ui.add_space(16.0);
+                ui.add_space(4.0);
                 self.ui_power(ui);
+                if self.running {
+                    // Only relevant while the dongle is sending.
+                    ui.add_space(12.0);
+                    self.ui_magnet_hint(ui);
+                }
                 ui.add_space(16.0);
                 ui.separator();
                 ui.add_space(8.0);

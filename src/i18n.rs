@@ -89,7 +89,7 @@ pub const EN: Texts = Texts {
     magnet_title: "Activate each bracelet with the magnet",
     magnet_hint: "Hold the magnet against the bracelet until its light flickers, then hold the bracelet next to the USB dongle.",
 
-    power_off: "Off: press to start",
+    power_off: "Start",
     power_on_program: "On: programming bracelets…",
     power_on_off: "On: turning bracelets off…",
     power_tooltip_start: "Start sending to bracelets",
@@ -151,7 +151,7 @@ pub const NL: Texts = Texts {
     magnet_title: "Activeer elke armband met de magneet",
     magnet_hint: "Houd de magneet tegen de armband tot het lampje flikkert en houd de armband dan bij de USB-dongle.",
 
-    power_off: "Uit: druk om te starten",
+    power_off: "Start",
     power_on_program: "Aan: armbanden worden geprogrammeerd…",
     power_on_off: "Aan: armbanden worden uitgezet…",
     power_tooltip_start: "Begin met verzenden naar armbanden",
