@@ -133,3 +133,6 @@ the bracelets. The app sends a write with 0/0/0 minutes instead, which *is* ackn
 ## License
 
 [MIT](LICENSE)
+
+The app embeds the [DejaVu Sans](https://dejavu-fonts.github.io/) font as a fallback for symbols. Its license
+is in [`assets/fonts/DejaVu-LICENSE.txt`](assets/fonts/DejaVu-LICENSE.txt).

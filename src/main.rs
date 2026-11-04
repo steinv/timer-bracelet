@@ -115,6 +115,7 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>, loc: Locale) -> Self {
+        install_fallback_font(&cc.egui_ctx);
         let dir = data_dir();
         let _ = std::fs::create_dir_all(&dir);
         let (db, dialog) = match Db::open(&dir.join("timer.db")) {
@@ -336,7 +337,8 @@ impl App {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("🧲").size(22.0));
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::hover());
+                    paint_magnet(ui, rect);
                     ui.vertical(|ui| {
                         ui.label(RichText::new(t.magnet_title).strong());
                         ui.label(t.magnet_hint);
@@ -608,6 +610,47 @@ impl App {
 }
 
 /// Round power button with the standard power symbol. Pulses while on.
+/// egui's built-in fonts miss symbols such as ● and ✔ (they render as empty
+/// boxes). DejaVu Sans covers them, so add it as a fallback after the
+/// default fonts. It is embedded, so it works the same on every OS.
+fn install_fallback_font(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "dejavu".into(),
+        Arc::new(egui::FontData::from_static(include_bytes!("../assets/fonts/DejaVuSans.ttf"))),
+    );
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        fonts.families.entry(family).or_default().push("dejavu".into());
+    }
+    ctx.set_fonts(fonts);
+}
+
+/// Small horseshoe magnet icon (drawn, so it doesn't depend on font glyphs).
+fn paint_magnet(ui: &egui::Ui, rect: egui::Rect) {
+    let p = ui.painter();
+    let w = rect.width() * 0.2; // stroke width
+    let r = rect.width() * 0.28; // radius of the bend
+    let c = Pos2::new(rect.center().x, rect.center().y + rect.height() * 0.1);
+    let top = rect.top() + w * 0.6;
+    let pole = top + w * 1.3; // where the grey tips end
+    let body = Stroke::new(w, RED);
+    let tip = Stroke::new(w, Color32::from_gray(150));
+
+    // U-shaped body: two legs joined by a half circle at the bottom.
+    let mut points = vec![Pos2::new(c.x - r, pole)];
+    points.extend((0..=24).map(|i| {
+        let a = PI - PI * i as f32 / 24.0; // left (PI) -> bottom -> right (0)
+        c + Vec2::new(a.cos(), a.sin()) * r
+    }));
+    points.push(Pos2::new(c.x + r, pole));
+    p.add(egui::Shape::line(points, body));
+
+    // Grey pole tips.
+    for x in [c.x - r, c.x + r] {
+        p.line_segment([Pos2::new(x, top), Pos2::new(x, pole)], tip);
+    }
+}
+
 fn paint_power_button(ui: &egui::Ui, c: Pos2, radius: f32, on: bool, mode: Mode, hovered: bool) {
     let p = ui.painter();
     let v = ui.visuals();
