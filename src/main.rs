@@ -540,24 +540,37 @@ impl App {
                     egui::Frame::group(ui.style()).inner_margin(6.0).show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
-                            egui::Grid::new("history_rows").num_columns(2).striped(true).spacing([24.0, 4.0]).show(ui, |ui| {
+                            // Columns: time | green | blue | red | status
+                            const NUM_W: f32 = 104.0;
+                            let cell = |ui: &mut egui::Ui, text: RichText| {
+                                ui.add_sized(Vec2::new(NUM_W, 18.0), egui::Label::new(text));
+                            };
+                            let weak = ui.visuals().weak_text_color();
+                            let font = egui::TextStyle::Body.resolve(ui.style());
+                            egui::Grid::new("history_rows").num_columns(5).striped(true).spacing([12.0, 4.0]).show(ui, |ui| {
                                 ui.label(RichText::new(t.col_time).weak());
-                                ui.label(RichText::new(t.col_minutes).weak());
+                                for (name, color) in [(t.green, GREEN), (t.blue, BLUE), (t.red, RED)] {
+                                    // "● Green (min)" with a coloured dot, centred over the numbers.
+                                    let mut job = egui::text::LayoutJob::default();
+                                    job.append("● ", 0.0, egui::TextFormat::simple(font.clone(), color));
+                                    job.append(&format!("{name} ({})", t.minutes), 0.0, egui::TextFormat::simple(font.clone(), weak));
+                                    ui.add_sized(Vec2::new(NUM_W, 18.0), egui::Label::new(job));
+                                }
+                                ui.label(RichText::new(t.col_status).weak());
                                 ui.end_row();
                                 for row in &self.history.rows {
                                     ui.label(row.start.format(self.loc.datetime_fmt).to_string());
-                                    ui.horizontal(|ui| {
-                                        ui.spacing_mut().item_spacing.x = 4.0;
-                                        ui.label(RichText::new(row.green.to_string()).color(GREEN).strong());
-                                        ui.label("/");
-                                        ui.label(RichText::new(row.blue.to_string()).color(BLUE).strong());
-                                        ui.label("/");
-                                        ui.label(RichText::new(row.red.to_string()).color(RED).strong());
-                                        if let Some(end) = row.ended {
-                                            ui.add_space(8.0);
-                                            ui.label(RichText::new(t.ended_at.replace("{t}", &end.format("%H:%M").to_string())).weak().italics());
-                                        }
-                                    });
+                                    cell(ui, RichText::new(row.green.to_string()).color(GREEN).strong());
+                                    cell(ui, RichText::new(row.blue.to_string()).color(BLUE).strong());
+                                    cell(ui, RichText::new(row.red.to_string()).color(RED).strong());
+                                    match row.ended {
+                                        Some(end) => ui.label(
+                                            RichText::new(t.ended_at.replace("{t}", &end.format("%H:%M").to_string()))
+                                                .weak()
+                                                .italics(),
+                                        ),
+                                        None => ui.label(""),
+                                    };
                                     ui.end_row();
                                 }
                             });
